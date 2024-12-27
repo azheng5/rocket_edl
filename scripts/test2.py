@@ -26,23 +26,23 @@ ez = np.array([0,0,1])
 # Propulsion
 Isp = 311
 T_max = 411000
-T_min = 0.0*T_max
+T_min = 0.4*T_max
 alpha = 1/(Isp*g)
 
 # Position control config
 glideslope = 1*(np.pi/180)
-thrust_cone = 30*(np.pi/180) # max thrust angle
-v_max = 10000
-v_horiz_max = 10000
-rx0 = 0
-ry0 = 0
-rz0 = 100
-vx0 = 0
-vy0 = 0
-vz0 = -10
+thrust_cone = 90*(np.pi/180) # max thrust angle
+rx0 = 200
+ry0 = 100
+rz0 = 2000
+vx0 = 2
+vy0 = -3
+vz0 = -50
+v_max = 1000000#rz0/N*dt
+v_horiz_max = 1000000#rx0/N*dt
 
 #%% Variables
-u = cp.Variable((N,3)) 
+u = cp.Variable((N,3))
 sigma = cp.Variable(N)
 r = cp.Variable((N+1,3))
 v = cp.Variable((N+1,3))
@@ -64,35 +64,36 @@ for k in range(N):
     vy_constraint = v[k+1,1] == v[k,1] + dt * (g_i[1] + u[k,1])
     vz_constraint = v[k+1,2] == v[k,2] + dt * (g_i[2] + u[k,2])
 
-    mass_constraint = z[k+1] == z[k] - alpha*sigma[k]*dt
+    z_constraint = z[k+1] == z[k] - alpha*sigma[k]*dt
 
     # Control constraints
+    z0 =  math.log(m_wet - alpha*T_max*k*dt)
+    mu1 = T_min*math.exp(-z0)
+    mu2 = T_max*math.exp(-z0)
+
     thrust_norm_constraint = cp.norm(u[k,:]) <= sigma[k]
     thrust_cone_constraint = u[k,2] <= sigma[k] * math.cos(thrust_cone)
-    sigma_lower_bound = sigma[k] >= mu1[k] * (1 - (z[k] - z0[k]) + 0.5*(z[k] - z0[k])**2)
-    sigma_upper_bound = sigma[k] <= mu2[k] * (1 - (z[k] - z0[k]))
+    sigma_lower_bound = sigma[k] >= mu1 * (1 - (z[k] - z0) + 0.5*(z[k] - z0)**2)
+    sigma_upper_bound = sigma[k] <= mu2 * (1 - (z[k] - z0))
     z_lower_bound = z[k] >= math.log(m_wet - alpha*T_max*k*dt)
     z_upper_bound = z[k] <= math.log(m_wet - alpha*T_min*k*dt)
 
-    thrust_lower_bound = z[k] >= T_min
-    thrust_upper_bound = z[k] <= T_max
-    # print(T[k,:] @ ez)
-
     # State constraints
+    # glideslope_constraint = cp.norm(cp.vstack([r[k,0], r[k,1]])) - r[k,2] * math.tan(np.pi/2 - glideslope) <= 0
+    glideslope_constraint = r[k,2] >= 0
     max_velocity = cp.norm(v[k,:]) <= v_max
     max_horiz_velocity_y = v[k,0] <= v_horiz_max
     max_horiz_velocity_z = v[k,1] <= v_horiz_max
 
-
     # Append constraints
     constraints.extend([rx_constraint, ry_constraint, rz_constraint, 
-                        vx_constraint, vy_constraint, vz_constraint, mass_constraint, 
+                        vx_constraint, vy_constraint, vz_constraint, z_constraint,
+                        glideslope_constraint,
                         max_velocity, max_horiz_velocity_y, max_horiz_velocity_z,
-                        thrust_lower_bound, thrust_upper_bound, thrust_norm_constraint, thrust_cone_constraint])
+                        thrust_norm_constraint, #thrust_cone_constraint,
+                        sigma_lower_bound, sigma_upper_bound, z_lower_bound, z_upper_bound])
 
 # Boundary value constraints
-initial_mass = z[0] == math.log(m_wet)
-final_mass = m[-1] >= math.log(m_dry)
 initial_position_x = r[0,0] == rx0
 initial_position_y = r[0,1] == ry0
 initial_position_z = r[0,2] == rz0
@@ -106,7 +107,7 @@ final_velocity_x = v[-1,0] == 0
 final_velocity_y = v[-1,1] == 0
 final_velocity_z = v[-1,2] == 0
 
-constraints.extend([initial_mass, final_mass, initial_position_x, initial_position_y, initial_position_z,
+constraints.extend([initial_position_x, initial_position_y, initial_position_z,
                     initial_velocity_x, initial_velocity_y, initial_velocity_z, final_position_x, 
                     final_position_y, final_position_z, final_velocity_x, final_velocity_y, final_velocity_z])
 
@@ -115,17 +116,25 @@ print("Solving problem...")
 prob = cp.Problem(cp.Minimize(objective), constraints)
 
 #%% Results
-result = prob.solve()
+result = prob.solve(verbose=True)
 
 fig1 = plt.figure()
 ax = plt.axes(projection='3d')
 ax.plot3D(r.value[:,0],r.value[:,1],r.value[:,2])
 ax.set_title('3d Trajectory')
 
-fig2, ax = plt.subplots()
-ax.plot(time,m.value[:])
-fig2.suptitle('Mass')
+fig2, (ax1,ax2,ax3) = plt.subplots(3,1)
+ax1.plot(time,r.value[:,0])
+ax2.plot(time,r.value[:,1])
+ax3.plot(time,r.value[:,2])
+fig2.suptitle('Position')
+
+fig3, (ax1,ax2,ax3) = plt.subplots(3,1)
+ax1.plot(time,v.value[:,0])
+ax2.plot(time,v.value[:,1])
+ax3.plot(time,v.value[:,2])
+fig3.suptitle('Velocity')
 
 plt.show()
 
-#
+print('fin.')
