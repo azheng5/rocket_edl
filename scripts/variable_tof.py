@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import Any
 
-from scripts.translational_control import solve_fixed_tof
+from sims.unit_tests.convex_traj import solve_fixed_tof
 
 dt = 0.1
 m_fuel = 10000

@@ -1,15 +1,17 @@
-import math
+import math as m
+
 import cvxpy as cp
 import numpy as np
 from numpy import linalg as LA
 import matplotlib.pyplot as plt
 from dataclasses import dataclass, field
 from typing import Any
+plt.style.use('dark_background')
 
 def tof_search(r0, v0, m0, tof_guess, config):
 
     # Extract variables
-    dt = config["dt"]
+    traj_ctrl_dt = config["traj_ctrl_dt"]
     m_dry = config["m_dry"]
     T_min = config["T_min"]
     T_max = config["T_max"]
@@ -37,7 +39,7 @@ def tof_search(r0, v0, m0, tof_guess, config):
             print("Optimal TOF found")
             t_star = t_i
             # set next iterations guess to slightly lower value (some multiple of controller time step)
-            tof_guess = t_star - 10*dt
+            tof_guess = t_star - 10*traj_ctrl_dt
             return soln, tof_guess
         else:
             t_i += 1
@@ -45,9 +47,9 @@ def tof_search(r0, v0, m0, tof_guess, config):
 def solve_fixed_tof(r0, v0, tof, m0, config):
 
     # Extract variables
-    dt = config["dt"]
-    N = int(tof/dt)
-    time = np.linspace(0, N*dt, N+1)
+    traj_ctrl_dt = config["traj_ctrl_dt"]
+    N = int(tof/traj_ctrl_dt)
+    time = np.linspace(0, N*traj_ctrl_dt, N+1)
     g = config["g"]
     g_i = config["g_i"]
     ex = config["ex"]
@@ -77,29 +79,29 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
     for k in range(N):
         # Dynamics constraints
         #TODO turn this constraint into vector form?
-        rx_dynamics = r[k+1,0] == r[k,0] + v[k,0]*dt + 0.5 * (dt**2) * (g_i[0] + u[k,0])
-        ry_dynamics = r[k+1,1] == r[k,1] + v[k,1]*dt + 0.5 * (dt**2) * (g_i[1] + u[k,1])
-        rz_dynamics = r[k+1,2] == r[k,2] + v[k,2]*dt + 0.5 * (dt**2) * (g_i[2] + u[k,2])
-        vx_dynamics = v[k+1,0] == v[k,0] + dt * (g_i[0] + u[k,0])
-        vy_dynamics = v[k+1,1] == v[k,1] + dt * (g_i[1] + u[k,1])
-        vz_dynamics = v[k+1,2] == v[k,2] + dt * (g_i[2] + u[k,2])
+        rx_dynamics = r[k+1,0] == r[k,0] + v[k,0]*traj_ctrl_dt + 0.5 * (traj_ctrl_dt**2) * (g_i[0] + u[k,0])
+        ry_dynamics = r[k+1,1] == r[k,1] + v[k,1]*traj_ctrl_dt + 0.5 * (traj_ctrl_dt**2) * (g_i[1] + u[k,1])
+        rz_dynamics = r[k+1,2] == r[k,2] + v[k,2]*traj_ctrl_dt + 0.5 * (traj_ctrl_dt**2) * (g_i[2] + u[k,2])
+        vx_dynamics = v[k+1,0] == v[k,0] + traj_ctrl_dt * (g_i[0] + u[k,0])
+        vy_dynamics = v[k+1,1] == v[k,1] + traj_ctrl_dt * (g_i[1] + u[k,1])
+        vz_dynamics = v[k+1,2] == v[k,2] + traj_ctrl_dt * (g_i[2] + u[k,2])
 
-        z_dynamics = z[k+1] == z[k] - alpha*sigma[k]*dt
+        z_dynamics = z[k+1] == z[k] - alpha*sigma[k]*traj_ctrl_dt
 
         # Control constraints
-        z0 =  math.log(m0 - alpha*T_max*k*dt)
-        mu1 = T_min*math.exp(-z0)
-        mu2 = T_max*math.exp(-z0)
+        z0 =  m.log(m0 - alpha*T_max*k*traj_ctrl_dt)
+        mu1 = T_min*m.exp(-z0)
+        mu2 = T_max*m.exp(-z0)
 
         thrust_norm_constraint = cp.norm(u[k,:]) <= sigma[k]
-        thrust_cone_constraint = u[k,2] <= sigma[k] * math.cos(thrust_cone)
+        thrust_cone_constraint = u[k,2] <= sigma[k] * m.cos(thrust_cone)
         sigma_lower_bound = sigma[k] >= mu1 * (1 - (z[k] - z0) + 0.5*(z[k] - z0)**2)
         sigma_upper_bound = sigma[k] <= mu2 * (1 - (z[k] - z0))
-        z_lower_bound = z[k] >= math.log(m0 - alpha*T_max*k*dt)
-        z_upper_bound = z[k] <= math.log(m0 - alpha*T_min*k*dt)
+        z_lower_bound = z[k] >= m.log(m0 - alpha*T_max*k*traj_ctrl_dt)
+        z_upper_bound = z[k] <= m.log(m0 - alpha*T_min*k*traj_ctrl_dt)
 
         # State constraints
-        # glideslope_constraint = cp.norm(cp.vstack([r[k,0], r[k,1]])) - r[k,2] * math.tan(np.pi/2 - glideslope) <= 0
+        # glideslope_constraint = cp.norm(cp.vstack([r[k,0], r[k,1]])) - r[k,2] * m.tan(np.pi/2 - glideslope) <= 0
         glideslope_constraint = r[k,2] >= 0
         max_velocity = cp.norm(v[k,:]) <= v_max
         max_horiz_velocity_y = v[k,0] <= v_horiz_max
@@ -156,7 +158,7 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
 
 if __name__ == "__main__":
 
-    dt = 0.1
+    traj_ctrl_dt = 0.1
     m_fuel = 10000
     m_dry = 25600
     m_wet = m_fuel + m_dry
@@ -190,7 +192,7 @@ if __name__ == "__main__":
         "thrust_cone": thrust_cone,
         "v_max": v_max,
         "v_horiz_max":v_horiz_max,
-        "dt":dt
+        "traj_ctrl_dt":traj_ctrl_dt
     }
 
     tof_guess = 50
