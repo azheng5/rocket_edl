@@ -38,6 +38,7 @@ class Rocket:
         self.max_N = int(self.max_tof/self.dt_c)
         self.k = 0 # current iteration
 
+
         # Trajectory control config
         self.init_tof_guess = self.config["init_tof_guess"]
 
@@ -65,17 +66,17 @@ class Rocket:
 
         # Allocate memory for logged data (better than appending bc numpy arrays are immutable)
         log = {
-            't': np.zeros(self.max_N),
-            'r': np.zeros((self.max_N,3)),
-            'v': np.zeros((self.max_N,3)),
-            'm': np.zeros(self.max_N),
-            'T': np.zeros((self.max_N,3))
+            't': np.zeros(self.max_N+1),
+            'r': np.zeros((self.max_N+1,3)),
+            'v': np.zeros((self.max_N+1,3)),
+            'm': np.zeros(self.max_N+1),
+            'T': np.zeros((self.max_N+1,3))
         }
 
-        while self.x[2] > 0:
-            #TODO add termination conditions function (thrust limit exceeded, AOA exceeded, etc)
+        while self.termination_conditions(T_des):
 
             # Trajectory control
+            print(self.x)
             (soln, tof_guess) = traj_control.tof_search(self.x[0:3],self.x[3:6],self.x[6],tof_guess,self.config)
             T_des = soln['T'][0,:]
 
@@ -85,6 +86,18 @@ class Rocket:
             # Control input
             u = T_des
 
+            # Push current states to log
+            # if self.k == 0:
+            #     log['t'][0] = 0
+            #     log['r'][0,:] = self.config['r0']
+            #     log['v'][0,:] = self.config['v0']
+            #     log['m'][0] = self.config['m0']
+            #     log['T'][0,:] = T_des
+            log['t'][self.k] = self.t
+            log['r'][self.k,:] = self.x[0:3]
+            log['v'][self.k,:] = self.x[3:6]
+            log['m'][self.k] = self.x[6]
+            log['T'][self.k,:] = T_des
 
             # Propagate dynamics for current control step
             # TODO this will have to be restructured when incorporating attitude dynamics (maybe)
@@ -94,24 +107,9 @@ class Rocket:
                 
                 self.t += self.dt_sim
 
-            # Push data to log
-            if self.k == 0:
-                log['t'][0] = 0
-                log['r'][0,:] = self.config['r0']
-                log['v'][0,:] = self.config['v0']
-                log['m'][0] = self.config['m0']
-                log['T'][0,:] = T_des
-            else:
-                log['t'][self.k] = self.t
-                log['r'][self.k,:] = self.x[0:3]
-                log['v'][self.k,:] = self.x[3:6]
-                log['m'][self.k] = self.x[6]
-                log['T'][self.k,:] = T_des
-
             self.k += 1
 
         self.plot(log)
-
 
         return 1
 
@@ -153,50 +151,70 @@ class Rocket:
 
         return x + (self.dt_sim/6)*(k1 + 2*k2 + 2*k3 + k4)
     
+    def termination_conditions(T):
+        if self.x[2] > 0:
+            print("Simulation terminated, glideslope constraint violated")
+            return True
+        if self.k < self.max_N:
+            print("Simulation terminated, max TOF reached")
+            return True
+        if self.x[6] >= self.config['m_dry']:
+            print("Simulation terminated, dry mass reached")
+            return True
+        if LA.norm(T) <= self.config['T_max']:
+            print("Simulation terminated, max thrust constraint violated")
+            return True
+        if LA.norm(T) >= self.config['T_min']:
+            print("Simulation terminated, min thrust constraint violated")
+            return True
+
+        return False
+        
+    
 
     def plot(self,log):
         
 
         fig1 = plt.figure()
         ax = plt.axes(projection='3d')
-        ax.plot3D(log['r'][:,2],log['r'][:,1],log['r'][:,0])
+        ax.plot3D(log['r'][0:self.k,2],log['r'][0:self.k,1],log['r'][0:self.k,0])
         ax.scatter(log['r'][0,2],log['r'][0,1],log['r'][0,0],s=20)
-        ax.scatter(log['r'][-1,2],log['r'][-1,1],log['r'][-1,0], marker='x',color='blue')
+        ax.scatter(log['r'][self.k-1,2],log['r'][self.k-1,1],log['r'][self.k-1,0], marker='x',color='blue')
         ax.scatter(0,0,0,marker='x',color='red',s=30)
-        ax.set_xlabel('x')
+        ax.set_xlabel('z')
         ax.set_ylabel('y')
-        ax.set_zlabel('z')
+        ax.set_zlabel('x')
         ax.set_title('3d Trajectory')
 
         #%%
         fig2, (ax1,ax2,ax3) = plt.subplots(3,1)
-        ax1.plot(log['t'],log['r'][:,0])
-        ax2.plot(log['t'],log['r'][:,1])
-        ax3.plot(log['t'],log['r'][:,2])
+        ax1.plot(log['t'][0:self.k],log['r'][0:self.k,0])
+        ax2.plot(log['t'][0:self.k],log['r'][0:self.k,1])
+        ax3.plot(log['t'][0:self.k],log['r'][0:self.k,2])
         fig2.suptitle('Position')
 
         #%%
         fig3, (ax1,ax2,ax3) = plt.subplots(3,1)
-        ax1.plot(log['t'],log['v'][:,0])
-        ax2.plot(log['t'],log['v'][:,1])
-        ax3.plot(log['t'],log['v'][:,2])
+        ax1.plot(log['t'][0:self.k],log['v'][0:self.k,0])
+        ax2.plot(log['t'][0:self.k],log['v'][0:self.k,1])
+        ax3.plot(log['t'][0:self.k],log['v'][0:self.k,2])
         fig3.suptitle('Velocity')
 
         #%%
         fig4, (ax1,ax2,ax3) = plt.subplots(3,1)
-        ax1.plot(log['t'][0:-1],log['T'][:,0])
-        ax2.plot(log['t'][0:-1],log['T'][:,1])
-        ax3.plot(log['t'][0:-1],log['T'][:,2])
+        ax1.plot(log['t'][0:self.k],log['T'][0:self.k,0])
+        ax2.plot(log['t'][0:self.k],log['T'][0:self.k,1])
+        ax3.plot(log['t'][0:self.k],log['T'][0:self.k,2])
         fig4.suptitle('Thrust')
 
         #%%
         fig5, ax = plt.subplots()
-        ax.plot(log['t'],log['m'])
+        ax.plot(log['t'][0:self.k],log['m'][0:self.k])
         fig5.suptitle('Mass')
 
         #%%
         fig6, ax = plt.subplots()
-        ax.plot(log['t'][0:-1],LA.norm(log['T'],axis=1))
+        ax.plot(log['t'][0:self.k],LA.norm(log['T'][0:self.k,:],axis=1))
         fig6.suptitle('Thrust Norm')
 
         #%%

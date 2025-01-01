@@ -5,7 +5,7 @@ m_fuel = 10000
 m_dry = 25600
 m0 = m_fuel + m_dry
 g = 9.807
-g_i = np.array([0,0,-g])
+g_i = np.array([-g,0,0])
 ex =  np.array([1,0,0])
 ey =  np.array([0,1,0])
 ez =  np.array([0,0,1])
@@ -21,7 +21,7 @@ v_max = 1000000 # arb
 v_horiz_max = 1000000 # arb
 dt_sim = 0.1
 init_tof_guess = 50
-max_tof = 60 # if tof is higher than this somethings wrong
+max_tof = 100 # if tof is higher than this somethings wrong
 
 config = {
     "m_fuel": m_fuel,
