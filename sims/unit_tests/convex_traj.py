@@ -158,27 +158,30 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
 
 if __name__ == "__main__":
 
-    traj_ctrl_dt = 0.1
+    dt_c = 0.1
     m_fuel = 10000
     m_dry = 25600
-    m_wet = m_fuel + m_dry
+    m0 = m_fuel + m_dry
     g = 9.807
-    g_i = np.array([0,0,-g])
+    g_i = np.array([-g,0,0])
     Isp = 311
     T_max = 411000
     T_min = 0.4*T_max
     alpha = 1/(Isp*g)
     glideslope = 1*(np.pi/180)
     thrust_cone = 10*(np.pi/180)
-    r0 = np.array([200,100,2000])
-    v0 = np.array([2,-3,-50])
+    r0 = np.array([2000,0,0])
+    v0 = np.array([-50,0,0])
     v_max = 1000000 # arb
     v_horiz_max = 1000000 # arb
+    dt_sim = 0.1
+    init_tof_guess = 50
+    max_tof
 
     config = {
         "m_fuel": m_fuel,
         "m_dry": m_dry,
-        "m_wet": m_wet,
+        "m0": m0,
         "g": g,
         "g_i": g_i,
         "ex": np.array([1,0,0]),
@@ -196,7 +199,7 @@ if __name__ == "__main__":
     }
 
     tof_guess = 50
-    (soln, tof_guess) = tof_search(r0,v0,m_wet,tof_guess,config)
+    (soln, tof_guess) = tof_search(r0,v0,m0,tof_guess,config)
     #%% Plot
     fig1 = plt.figure()
     ax = plt.axes(projection='3d')

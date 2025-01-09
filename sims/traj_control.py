@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from typing import Any
 plt.style.use('dark_background')
 
+import rkt_config
+
 def tof_search(r0, v0, m0, tof_guess, config):
 
     # Extract variables
@@ -39,20 +41,22 @@ def tof_search(r0, v0, m0, tof_guess, config):
             print("")
             print("Optimal TOF found")
 
-            # next iterations guess should be a slightly lower value (some multiple of controller time step)
-            if t_i <= 15:
-                tof_guess = 1
-            else:
-                tof_guess = t_i - 3*dt_c
+            # next iterations guess should be a slightly lower value
+            tof_guess = t_i - dt_c
+            # if t_i <= 15:
+            #     tof_guess = 1
+            # else:
+            #     tof_guess = t_i - 3*dt_c
 
             return soln, tof_guess
-        else:
-            if t_i < 15:
-                t_i += dt_c
-            elif t_i <= 8:
-                t_i += 0.1*dt_c
-            else:
-                t_i += dt_c
+        else: # modify tof and continue searching for valid tof
+            t_i -= 0.1
+            # if t_i < 15:
+            #     t_i += dt_c
+            # elif t_i <= 8:
+            #     t_i += 0.1*dt_c
+            # else:
+            #     t_i += dt_c
 
 def solve_fixed_tof(r0, v0, tof, m0, config):
 
@@ -72,6 +76,7 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
     thrust_cone = config["thrust_cone"]
     v_max = config["v_max"]
     v_horiz_max = config["v_horiz_max"]
+    m_dry = config['m_dry']
 
     # Variables
     u = cp.Variable((N,3))
@@ -102,9 +107,8 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
         z0 =  m.log(m0 - alpha*T_max*k*dt_c)
         mu1 = T_min*m.exp(-z0)
         mu2 = T_max*m.exp(-z0)
-
         thrust_norm_constraint = cp.norm(u[k,:]) <= sigma[k]
-        thrust_cone_constraint = u[k,2] <= sigma[k] * m.cos(thrust_cone)
+        thrust_cone_constraint = u[k,0] <= sigma[k] * m.cos(thrust_cone)
         sigma_lower_bound = sigma[k] >= mu1 * (1 - (z[k] - z0) + 0.5*(z[k] - z0)**2)
         sigma_upper_bound = sigma[k] <= mu2 * (1 - (z[k] - z0))
         z_lower_bound = z[k] >= m.log(m0 - alpha*T_max*k*dt_c)
@@ -112,7 +116,7 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
 
         # State constraints
         # glideslope_constraint = cp.norm(cp.vstack([r[k,0], r[k,1]])) - r[k,2] * m.tan(np.pi/2 - glideslope) <= 0
-        glideslope_constraint = r[k,1] >= 0
+        glideslope_constraint = r[k,0] >= 0
         max_velocity = cp.norm(v[k,:]) <= v_max
         max_horiz_velocity_y = v[k,1] <= v_horiz_max
         max_horiz_velocity_z = v[k,2] <= v_horiz_max
@@ -138,10 +142,13 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
     final_velocity_x = v[-1,0] == 0
     final_velocity_y = v[-1,1] == 0
     final_velocity_z = v[-1,2] == 0
+    initial_mass = z[0] == m.log(m0)
+    final_mass = z[-1] >= m.log(m_dry)
 
     constraints.extend([initial_position_x, initial_position_y, initial_position_z,
                         initial_velocity_x, initial_velocity_y, initial_velocity_z, final_position_x, 
-                        final_position_y, final_position_z, final_velocity_x, final_velocity_y, final_velocity_z])
+                        final_position_y, final_position_z, final_velocity_x, final_velocity_y, final_velocity_z,
+                        initial_mass, final_mass])
 
     # Solve
     prob = cp.Problem(cp.Minimize(objective), constraints)
@@ -157,7 +164,9 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
             'r': r.value,
             'v': v.value,
             'm': m_temp,
-            'T': np.exp(z_temp[0:-1,:]) * u.value
+            'T': np.exp(z_temp[0:-1,:]) * u.value,
+            'u': u.value, # debug purposes
+            'z': z.value
         }
         valid_tof = True
     else:
@@ -167,93 +176,56 @@ def solve_fixed_tof(r0, v0, tof, m0, config):
     return (soln, valid_tof)
 
 if __name__ == "__main__":
+    '''Unit test - "offline" traj solver'''
 
-    dt_c = 1
-    m_dry = 25600
-    m0 = 32563.3157
-    m_fuel = m0 - m_dry
-    g = 9.807
-    g_i = np.array([-g,0,0])
-    ex =  np.array([1,0,0])
-    ey =  np.array([0,1,0])
-    ez =  np.array([0,0,1])
-    Isp = 311
-    T_max = 411000
-    T_min = 0.4*T_max
-    alpha = 1/(Isp*g)
-    glideslope = 1*(np.pi/180)
-    thrust_cone = 20*(np.pi/180)
-    r0 = np.array([2.79397413e+01, 9.78508904e+01, 2.97009782e+02])
-    v0 = np.array([-4.57126639e+00, -8.83179104e+00, -2.17624952e+01])
-    v_max = 1000000 # arb
-    v_horiz_max = 1000000 # arb
-    dt_sim = 0.1
-    init_tof_guess = 50
-    max_tof = 60 # if tof is higher than this somethings wrong
+    config = rkt_config.config
 
-    config = {
-        "m_fuel": m_fuel,
-        "m_dry": m_dry,
-        "m0": m0,
-        "g": g,
-        "g_i": g_i,
-        "ex": ex,
-        "ey": ey,
-        "ez": ez,
-        "Isp": Isp,
-        "T_max": T_max,
-        "T_min": T_min,
-        "alpha": alpha,
-        "glideslope": glideslope,
-        "thrust_cone": thrust_cone,
-        "v_max": v_max,
-        "v_horiz_max":v_horiz_max,
-        "dt_c": dt_c,
-        "dt_sim": dt_sim,
-        "init_tof_guess": init_tof_guess,
-        "max_tof": max_tof,
-        "r0": r0,
-        "v0": v0
-    }
+    (soln, tof_guess) = tof_search(config['r0'],config['v0'],config['m0'],config['init_tof_guess'],config)
 
-    tof_guess = 13.1
-    (soln, tof_guess) = tof_search(r0,v0,m0,tof_guess,config)
+    #%% Plot
+    fig1 = plt.figure()
+    ax = plt.axes(projection='3d')
+    ax.plot3D(soln['r'][:,0],soln['r'][:,1],soln['r'][:,2])
+    ax.scatter(soln['r'][0,0],soln['r'][0,1],soln['r'][0,2],s=20)
+    ax.scatter(soln['r'][-1,0],soln['r'][-1,1],soln['r'][-1,2], marker='x',color='blue')
+    ax.scatter(0,0,0,marker='x',color='red',s=30)
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_zlabel('z')
+    ax.set_title('3d Trajectory')
 
-    # dt_c = 0.1
-    # m_fuel = 10000
-    # m_dry = 25600
-    # m0 = m_fuel + m_dry
-    # g = 9.807
-    # g_i = np.array([-g,0,0])
-    # Isp = 311
-    # T_max = 411000
-    # T_min = 0.4*T_max
-    # alpha = 1/(Isp*g)
-    # glideslope = 1*(np.pi/180)
-    # thrust_cone = 10*(np.pi/180)
-    # r0 = np.array([2000,100,200])
-    # v0 = np.array([-50,-3,2])
-    # v_max = 1000000 # arb
-    # v_horiz_max = 1000000 # arb
+    #%%
+    fig2, (ax1,ax2,ax3) = plt.subplots(3,1)
+    ax1.plot(soln['t'],soln['r'][:,0])
+    ax2.plot(soln['t'],soln['r'][:,1])
+    ax3.plot(soln['t'],soln['r'][:,2])
+    fig2.suptitle('Position')
 
-    # config = {
-    #     "m_fuel": m_fuel,
-    #     "m_dry": m_dry,
-    #     "m0": m0,
-    #     "g": g,
-    #     "g_i": g_i,
-    #     "ex": np.array([1,0,0]),
-    #     "ey": np.array([0,1,0]),
-    #     "ez": np.array([0,0,1]),
-    #     "Isp": Isp,
-    #     "T_max": T_max,
-    #     "T_min": T_min,
-    #     "alpha": alpha,
-    #     "glideslope": glideslope,
-    #     "thrust_cone": thrust_cone,
-    #     "v_max": v_max,
-    #     "v_horiz_max": v_horiz_max,
-    #     "dt_c": dt_c,
-    #     'r0': r0,
-    #     'v0': v0
-    # }
+    #%%
+    fig3, (ax1,ax2,ax3) = plt.subplots(3,1)
+    ax1.plot(soln['t'],soln['v'][:,0])
+    ax2.plot(soln['t'],soln['v'][:,1])
+    ax3.plot(soln['t'],soln['v'][:,2])
+    fig3.suptitle('Velocity')
+
+    #%%
+    fig4, (ax1,ax2,ax3) = plt.subplots(3,1)
+    ax1.plot(soln['t'][0:-1],soln['T'][:,0])
+    ax2.plot(soln['t'][0:-1],soln['T'][:,1])
+    ax3.plot(soln['t'][0:-1],soln['T'][:,2])
+    fig4.suptitle('Thrust')
+
+    #%%
+    fig5, ax = plt.subplots()
+    ax.plot(soln['t'],soln['m'])
+    fig5.suptitle('Mass')
+
+    #%%
+    fig6, ax = plt.subplots()
+    ax.plot(soln['t'][0:-1],LA.norm(soln['T'],axis=1))
+    fig6.suptitle('Thrust Norm')
+
+    #%%
+    plt.show()
+
+    print('fin.')

@@ -15,11 +15,11 @@ T_min = 0.4*T_max
 alpha = 1/(Isp*g)
 glideslope = 1*(np.pi/180)
 thrust_cone = 10*(np.pi/180)
-r0 = np.array([200,100,2000])
-v0 = np.array([2,-3,-50])
+r0 = np.array([2000,0,0])
+v0 = np.array([-50,0,0])
 v_max = 1000000 # arb
 v_horiz_max = 1000000 # arb
-dt_sim = 0.1
+dt_sim = 1
 init_tof_guess = 50
 max_tof = 100 # if tof is higher than this somethings wrong
 
