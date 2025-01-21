@@ -15,13 +15,16 @@ T_min = 0.4*T_max
 alpha = 1/(Isp*g)
 glideslope = 1*(np.pi/180)
 thrust_cone = 10*(np.pi/180)
-r0 = np.array([2000,0,0])
-v0 = np.array([-50,0,0])
+r0_mean = np.array([2000,0,0])
+v0_mean = np.array([-50,0,0])
+r0_std = np.array([50,100,100]) # 50 100 100
+v0_std = np.array([5,5,5]) # 5 5 5
 v_max = 1000000 # arb
 v_horiz_max = 1000000 # arb
-dt_sim = 1
+dt_sim = 0.01
 init_tof_guess = 50
 max_tof = 100 # if tof is higher than this somethings wrong
+num_runs = 1
 
 config = {
     "m_fuel": m_fuel,
@@ -44,6 +47,11 @@ config = {
     "dt_sim": dt_sim,
     "init_tof_guess": init_tof_guess,
     "max_tof": max_tof,
-    "r0": r0,
-    "v0": v0
+    "r0_mean": r0_mean,
+    "v0_mean": v0_mean,
+    "r0_std": r0_std,
+    "v0_std": v0_std,
+    "r0": np.array([0,0,0]),
+    "v0": np.array([0,0,0]),
+    "num_runs": num_runs
 }

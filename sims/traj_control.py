@@ -50,7 +50,7 @@ def tof_search(r0, v0, m0, tof_guess, config):
 
             return soln, tof_guess
         else: # modify tof and continue searching for valid tof
-            t_i -= 0.1
+            t_i -= 0.2*dt_c
             # if t_i < 15:
             #     t_i += dt_c
             # elif t_i <= 8:
@@ -185,13 +185,13 @@ if __name__ == "__main__":
     #%% Plot
     fig1 = plt.figure()
     ax = plt.axes(projection='3d')
-    ax.plot3D(soln['r'][:,0],soln['r'][:,1],soln['r'][:,2])
-    ax.scatter(soln['r'][0,0],soln['r'][0,1],soln['r'][0,2],s=20)
-    ax.scatter(soln['r'][-1,0],soln['r'][-1,1],soln['r'][-1,2], marker='x',color='blue')
+    ax.plot3D(soln['r'][:,2],-soln['r'][:,1],soln['r'][:,0])
+    ax.scatter(soln['r'][0,2],-soln['r'][0,1],soln['r'][0,0],s=20)
+    ax.scatter(soln['r'][-1,2],-soln['r'][-1,1],soln['r'][-1,0], marker='x',color='blue')
     ax.scatter(0,0,0,marker='x',color='red',s=30)
-    ax.set_xlabel('x')
+    ax.set_xlabel('z')
     ax.set_ylabel('y')
-    ax.set_zlabel('z')
+    ax.set_zlabel('x')
     ax.set_title('3d Trajectory')
 
     #%%
