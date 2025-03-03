@@ -11,14 +11,14 @@ import matplotlib.pyplot as plt
 plt.style.use('dark_background')
 
 from Rocket import Rocket
-import traj_control
+import sims.trajectory_control as trajectory_control
 import rkt_config
 
 if __name__ == '__main__':
 
     # Generate optimized trajectory
     config = rkt_config.config
-    (soln0, tof_guess) = traj_control.tof_search(config['r0_mean'],config['v0_mean'],config['m0'],config['init_tof_guess'],config)
+    (soln0, tof_guess) = trajectory_control.tof_search(config['r0_mean'],config['v0_mean'],config['m0'],config['init_tof_guess'],config)
 
     # Initialize rocket integrators
     rk4 = Rocket(config)

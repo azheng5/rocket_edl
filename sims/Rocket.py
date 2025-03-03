@@ -6,7 +6,8 @@ from numpy import linalg as LA
 import matplotlib.pyplot as plt
 plt.style.use('dark_background')
 
-import traj_control
+import trajectory_control
+import attitude_control
 from tools import debug
 from tools import attitude
 from tools import plotting
@@ -46,13 +47,14 @@ class Rocket:
 
         # Log
         self.empty_log = {
-            't': np.zeros(self.max_N+1),
-            'r': np.zeros((self.max_N+1,3)), # position in inertial frame
-            'v': np.zeros((self.max_N+1,3)), # velocity in inertial frame
-            # 'qBI': np.zeros((self.max_N+1,4)), # quaternion from inertial to body
-            # 'w_BI': np.zeros((self.max_N+1,3)), # angular velocity of body wrt inertial expressed in body
-            'm': np.zeros(self.max_N+1),
-            'T': np.zeros((self.max_N+1,3))
+            't': np.zeros(self.max_N+1), # time
+            'r_i': np.zeros((self.max_N+1,3)), # position in target frame
+            'v_i': np.zeros((self.max_N+1,3)), # velocity in target frame
+            'q_bi': np.zeros((self.max_N+1,4)), # quaternion from target to body
+            'w_bi': np.zeros((self.max_N+1,3)), # angular velocity of body wrt target expressed in body
+            'm': np.zeros(self.max_N+1), # mass
+            'T_i': np.zeros((self.max_N+1,3)), # thrust in target frame
+            'M_b': np.zeros((self.max_N+1,3)) # thrust moment about CG in body frame
         }
 
 
@@ -101,8 +103,8 @@ class Rocket:
         self.k = 0
         self.x = [config['r0'][0], config['r0'][1], config['r0'][2],
                   config['v0'][0], config['v0'][1], config['v0'][2],
-                #   config['q0'][0], config['q0'][1], config['q0'][2], config['q0'][3],
-                #   config['w0'][0], config['w0'][1], config['w0'][2],
+                  config['q0'][0], config['q0'][1], config['q0'][2], config['q0'][3],
+                  config['w0'][0], config['w0'][1], config['w0'][2],
                   config['m0']] # state
         self.t = 0 # time
         self.tof_guess = self.config["init_tof_guess"]
@@ -111,29 +113,29 @@ class Rocket:
         # Enter simulation loop
         while not terminate_sim:
 
-            # Trajectory control
-            (soln, tof_guess_next) = traj_control.tof_search(self.x[0:3],self.x[3:6],self.x[6],self.tof_guess,config)
+            #%% Trajectory control
+            (soln, tof_guess_next) = trajectory_control.tof_search(self.x[0:3],self.x[3:6],self.x[13],self.tof_guess,config)
 
-            T_des = soln['T'][0,:]
+            # Pick first optimal thrust as actuation cmd
+            T_i = soln['T'][0,:]
 
             # Clamp thrust norm
-            if LA.norm(T_des) > self.config['T_max']:
-                # warnings.warn('Optimal thrust violated max limit and was clamped')
-                debug.warn('Optimal thrust violated max limit and was clamped')
-                T_des = T_des * (self.config['T_max']/LA.norm(T_des))
-            elif LA.norm(T_des) < self.config['T_min']:
-                # warnings.warn('Optimal thrust violated min limit and was clamped')
-                debug.warn('Optimal thrust violated max limit and was clamped')
-                T_des = T_des * (self.config['T_min']/LA.norm(T_des))
+            if LA.norm(T_i) > self.config['T_max']:
 
+                debug.warn('Optimal thrust violated max limit and was clamped')
+                T_i = T_i * (self.config['T_max']/LA.norm(T_i))
+
+            elif LA.norm(T_i) < self.config['T_min']:
+
+                debug.warn('Optimal thrust violated max limit and was clamped')
+                T_i = T_i * (self.config['T_min']/LA.norm(T_i))
             
             if self.k == 0:
                 soln0 = soln
             print('Debug compare thrust',soln0['T'][self.k,:],T_des)
             
-
-            # Attitude control
-            # M_des = attitude_control.pid()
+            #%% Attitude control
+            M_b = atd_control.pid()
 
             # Control input
             u = T_des
